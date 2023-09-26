@@ -168,5 +168,3 @@ func (o *Outboard) CloseOrPanic() {
 		panic(err)
 	}
 }
-
-// TODO file counters. use partNumber and pass it as a parameter.
