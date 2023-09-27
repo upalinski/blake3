@@ -8,7 +8,7 @@ import (
 	"os"
 	"testing"
 
-	"cere.network/blake3"
+	"github.com/upalinski/blake3"
 )
 
 func toHex(data []byte) string { return hex.EncodeToString(data) }

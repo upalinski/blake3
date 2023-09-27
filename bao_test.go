@@ -5,7 +5,7 @@ import (
 	"os"
 	"testing"
 
-	"cere.network/blake3"
+	"github.com/upalinski/blake3"
 )
 
 func TestBaoGolden(t *testing.T) {

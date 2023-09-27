@@ -1,4 +1,4 @@
-module cere.network/blake3
+module github.com/upalinski/blake3
 
 go 1.17
 
