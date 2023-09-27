@@ -12,7 +12,7 @@ import (
 func BaoEncodedSize(dataLen int, outboard bool) int {
 	size := 8
 	if dataLen > 0 {
-		chunks := (dataLen + chunkSize - 1) / chunkSize
+		chunks := (dataLen + ChunkSize - 1) / ChunkSize
 		cvs := 2*chunks - 2 // no I will not elaborate
 		size += cvs * 32
 	}
@@ -31,7 +31,7 @@ func BaoEncodedSize(dataLen int, outboard bool) int {
 // with sufficient capacity to hold the encoding; see BaoEncodedSize.
 func BaoEncode(dst io.WriterAt, data io.Reader, dataLen int64, outboard bool) ([32]byte, error) {
 	var counter uint64
-	var chunkBuf [chunkSize]byte
+	var chunkBuf [ChunkSize]byte
 	var err error
 	read := func(p []byte) []byte {
 		if err == nil {
@@ -53,8 +53,8 @@ func BaoEncode(dst io.WriterAt, data io.Reader, dataLen int64, outboard bool) ([
 	rec = func(bufLen uint64, flags uint32, off uint64) (uint64, [8]uint32) {
 		if err != nil {
 			return 0, [8]uint32{}
-		} else if bufLen <= chunkSize {
-			cv := chainingValue(compressChunk(read(chunkBuf[:bufLen]), &iv, counter, flags))
+		} else if bufLen <= ChunkSize {
+			cv := ChainingValue(CompressChunk(read(chunkBuf[:bufLen]), &Iv, counter, flags))
 			counter++
 			if !outboard {
 				write(chunkBuf[:bufLen], off)
@@ -65,18 +65,18 @@ func BaoEncode(dst io.WriterAt, data io.Reader, dataLen int64, outboard bool) ([
 		lchildren, l := rec(mid, 0, off+64)
 		llen := lchildren * 32
 		if !outboard {
-			llen += (mid / chunkSize) * chunkSize
+			llen += (mid / ChunkSize) * ChunkSize
 		}
 		rchildren, r := rec(bufLen-mid, 0, off+64+llen)
-		write(cvToBytes(&l)[:], off)
-		write(cvToBytes(&r)[:], off+32)
-		return 2 + lchildren + rchildren, chainingValue(parentNode(l, r, iv, flags))
+		write(CvToBytes(&l)[:], off)
+		write(CvToBytes(&r)[:], off+32)
+		return 2 + lchildren + rchildren, ChainingValue(ParentNode(l, r, Iv, flags))
 	}
 
 	binary.LittleEndian.PutUint64(chunkBuf[:8], uint64(dataLen))
 	write(chunkBuf[:8], 0)
-	_, root := rec(uint64(dataLen), flagRoot, 8)
-	return *cvToBytes(&root), err
+	_, root := rec(uint64(dataLen), FlagRoot, 8)
+	return *CvToBytes(&root), err
 }
 
 // BaoDecode reads content and tree data from the provided reader(s), and
@@ -87,7 +87,7 @@ func BaoDecode(dst io.Writer, data, outboard io.Reader, root [32]byte) (bool, er
 		outboard = data
 	}
 	var counter uint64
-	var buf [chunkSize]byte
+	var buf [ChunkSize]byte
 	var err error
 	read := func(r io.Reader, p []byte) []byte {
 		if err == nil {
@@ -97,27 +97,27 @@ func BaoDecode(dst io.Writer, data, outboard io.Reader, root [32]byte) (bool, er
 	}
 	readParent := func() (l, r [8]uint32) {
 		read(outboard, buf[:64])
-		return bytesToCV(buf[:32]), bytesToCV(buf[32:])
+		return BytesToCV(buf[:32]), BytesToCV(buf[32:])
 	}
 
 	var rec func(cv [8]uint32, bufLen uint64, flags uint32) bool
 	rec = func(cv [8]uint32, bufLen uint64, flags uint32) bool {
 		if err != nil {
 			return false
-		} else if bufLen <= chunkSize {
-			n := compressChunk(read(data, buf[:bufLen]), &iv, counter, flags)
+		} else if bufLen <= ChunkSize {
+			n := CompressChunk(read(data, buf[:bufLen]), &Iv, counter, flags)
 			counter++
-			return cv == chainingValue(n)
+			return cv == ChainingValue(n)
 		}
 		l, r := readParent()
-		n := parentNode(l, r, iv, flags)
+		n := ParentNode(l, r, Iv, flags)
 		mid := uint64(1) << (bits.Len64(bufLen-1) - 1)
-		return chainingValue(n) == cv && rec(l, mid, 0) && rec(r, bufLen-mid, 0)
+		return ChainingValue(n) == cv && rec(l, mid, 0) && rec(r, bufLen-mid, 0)
 	}
 
 	read(outboard, buf[:8])
 	dataLen := binary.LittleEndian.Uint64(buf[:8])
-	ok := rec(bytesToCV(root[:]), dataLen, flagRoot)
+	ok := rec(BytesToCV(root[:]), dataLen, FlagRoot)
 	return ok, err
 }
 

@@ -5,7 +5,7 @@ import (
 	"math/bits"
 )
 
-func compressNodeGeneric(out *[16]uint32, n node) {
+func compressNodeGeneric(out *[16]uint32, n Node) {
 	g := func(a, b, c, d, mx, my uint32) (uint32, uint32, uint32, uint32) {
 		a += b + mx
 		d = bits.RotateLeft32(d^a, -16)
@@ -23,10 +23,10 @@ func compressNodeGeneric(out *[16]uint32, n node) {
 
 	// round 1 (also initializes state)
 	// columns
-	s0, s4, s8, s12 := g(n.cv[0], n.cv[4], iv[0], uint32(n.counter), n.block[0], n.block[1])
-	s1, s5, s9, s13 := g(n.cv[1], n.cv[5], iv[1], uint32(n.counter>>32), n.block[2], n.block[3])
-	s2, s6, s10, s14 := g(n.cv[2], n.cv[6], iv[2], n.blockLen, n.block[4], n.block[5])
-	s3, s7, s11, s15 := g(n.cv[3], n.cv[7], iv[3], n.flags, n.block[6], n.block[7])
+	s0, s4, s8, s12 := g(n.cv[0], n.cv[4], Iv[0], uint32(n.counter), n.block[0], n.block[1])
+	s1, s5, s9, s13 := g(n.cv[1], n.cv[5], Iv[1], uint32(n.counter>>32), n.block[2], n.block[3])
+	s2, s6, s10, s14 := g(n.cv[2], n.cv[6], Iv[2], n.blockLen, n.block[4], n.block[5])
+	s3, s7, s11, s15 := g(n.cv[3], n.cv[7], Iv[3], n.flags, n.block[6], n.block[7])
 	// diagonals
 	s0, s5, s10, s15 = g(s0, s5, s10, s15, n.block[8], n.block[9])
 	s1, s6, s11, s12 = g(s1, s6, s11, s12, n.block[10], n.block[11])
@@ -102,36 +102,36 @@ func compressNodeGeneric(out *[16]uint32, n node) {
 	}
 }
 
-func chainingValue(n node) (cv [8]uint32) {
+func ChainingValue(n Node) (cv [8]uint32) {
 	full := compressNode(n)
 	copy(cv[:], full[:])
 	return
 }
 
-func compressBufferGeneric(buf *[maxSIMD * chunkSize]byte, buflen int, key *[8]uint32, counter uint64, flags uint32) (n node) {
-	if buflen <= chunkSize {
-		return compressChunk(buf[:buflen], key, counter, flags)
+func compressBufferGeneric(buf *[maxSIMD * ChunkSize]byte, buflen int, key *[8]uint32, counter uint64, flags uint32) (n Node) {
+	if buflen <= ChunkSize {
+		return CompressChunk(buf[:buflen], key, counter, flags)
 	}
 	var cvs [maxSIMD][8]uint32
 	var numCVs uint64
 	for bb := bytes.NewBuffer(buf[:buflen]); bb.Len() > 0; numCVs++ {
-		cvs[numCVs] = chainingValue(compressChunk(bb.Next(chunkSize), key, counter+numCVs, flags))
+		cvs[numCVs] = ChainingValue(CompressChunk(bb.Next(ChunkSize), key, counter+numCVs, flags))
 	}
 	return mergeSubtrees(&cvs, numCVs, key, flags)
 }
 
-func compressBlocksGeneric(outs *[maxSIMD][64]byte, n node) {
+func compressBlocksGeneric(outs *[maxSIMD][64]byte, n Node) {
 	for i := range outs {
 		wordsToBytes(compressNode(n), &outs[i])
 		n.counter++
 	}
 }
 
-func mergeSubtreesGeneric(cvs *[maxSIMD][8]uint32, numCVs uint64, key *[8]uint32, flags uint32) node {
+func mergeSubtreesGeneric(cvs *[maxSIMD][8]uint32, numCVs uint64, key *[8]uint32, flags uint32) Node {
 	for numCVs > 2 {
 		rem := numCVs / 2
 		for i := range cvs[:rem] {
-			cvs[i] = chainingValue(parentNode(cvs[i*2], cvs[i*2+1], *key, flags))
+			cvs[i] = ChainingValue(ParentNode(cvs[i*2], cvs[i*2+1], *key, flags))
 		}
 		if numCVs%2 != 0 {
 			cvs[rem] = cvs[rem*2]
@@ -139,5 +139,5 @@ func mergeSubtreesGeneric(cvs *[maxSIMD][8]uint32, numCVs uint64, key *[8]uint32
 		}
 		numCVs = rem
 	}
-	return parentNode(cvs[0], cvs[1], *key, flags)
+	return ParentNode(cvs[0], cvs[1], *key, flags)
 }

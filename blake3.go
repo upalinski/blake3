@@ -14,35 +14,35 @@ const (
 	flagChunkStart = 1 << iota
 	flagChunkEnd
 	flagParent
-	flagRoot
+	FlagRoot
 	flagKeyedHash
 	flagDeriveKeyContext
 	flagDeriveKeyMaterial
 
 	blockSize = 64
-	chunkSize = 1024
+	ChunkSize = 1024
 
 	maxSIMD = 16 // AVX-512 vectors can store 16 words
 )
 
-var iv = [8]uint32{
+var Iv = [8]uint32{
 	0x6A09E667, 0xBB67AE85, 0x3C6EF372, 0xA54FF53A,
 	0x510E527F, 0x9B05688C, 0x1F83D9AB, 0x5BE0CD19,
 }
 
-// A node represents a chunk or parent in the BLAKE3 Merkle tree.
-type node struct {
-	cv       [8]uint32 // chaining value from previous node
+// A Node represents a chunk or parent in the BLAKE3 Merkle tree.
+type Node struct {
+	cv       [8]uint32 // chaining value from previous Node
 	block    [16]uint32
 	counter  uint64
 	blockLen uint32
 	flags    uint32
 }
 
-// parentNode returns a node that incorporates the chaining values of two child
+// ParentNode returns a Node that incorporates the chaining values of two child
 // nodes.
-func parentNode(left, right [8]uint32, key [8]uint32, flags uint32) node {
-	n := node{
+func ParentNode(left, right [8]uint32, key [8]uint32, flags uint32) Node {
+	n := Node{
 		cv:       key,
 		counter:  0,         // counter is reset for parents
 		blockLen: blockSize, // block is full
@@ -60,10 +60,10 @@ type Hasher struct {
 	size  int // output size, for Sum
 
 	// log(n) set of Merkle subtree roots, at most one per height.
-	stack   [50][8]uint32 // 2^50 * maxSIMD * chunkSize = 2^64
+	stack   [50][8]uint32 // 2^50 * maxSIMD * ChunkSize = 2^64
 	counter uint64        // number of buffers hashed; also serves as a bit vector indicating which stack elems are occupied
 
-	buf    [maxSIMD * chunkSize]byte
+	buf    [maxSIMD * ChunkSize]byte
 	buflen int
 }
 
@@ -75,7 +75,7 @@ func (h *Hasher) pushSubtree(cv [8]uint32) {
 	// seek to first open stack slot, merging subtrees as we go
 	i := 0
 	for h.hasSubtreeAtHeight(i) {
-		cv = chainingValue(parentNode(h.stack[i], cv, h.key, h.flags))
+		cv = ChainingValue(ParentNode(h.stack[i], cv, h.key, h.flags))
 		i++
 	}
 	h.stack[i] = cv
@@ -84,14 +84,14 @@ func (h *Hasher) pushSubtree(cv [8]uint32) {
 
 // rootNode computes the root of the Merkle tree. It does not modify the
 // stack.
-func (h *Hasher) rootNode() node {
+func (h *Hasher) rootNode() Node {
 	n := compressBuffer(&h.buf, h.buflen, &h.key, h.counter*maxSIMD, h.flags)
 	for i := bits.TrailingZeros64(h.counter); i < bits.Len64(h.counter); i++ {
 		if h.hasSubtreeAtHeight(i) {
-			n = parentNode(h.stack[i], chainingValue(n), h.key, h.flags)
+			n = ParentNode(h.stack[i], ChainingValue(n), h.key, h.flags)
 		}
 	}
-	n.flags |= flagRoot
+	n.flags |= FlagRoot
 	return n
 }
 
@@ -101,7 +101,7 @@ func (h *Hasher) Write(p []byte) (int, error) {
 	for len(p) > 0 {
 		if h.buflen == len(h.buf) {
 			n := compressBuffer(&h.buf, h.buflen, &h.key, h.counter*maxSIMD, h.flags)
-			h.pushSubtree(chainingValue(n))
+			h.pushSubtree(ChainingValue(n))
 			h.buflen = 0
 		}
 		n := copy(h.buf[h.buflen:], p)
@@ -165,7 +165,7 @@ func newHasher(key [8]uint32, flags uint32, size int) *Hasher {
 // the hash is unkeyed. Otherwise, len(key) must be 32.
 func New(size int, key []byte) *Hasher {
 	if key == nil {
-		return newHasher(iv, 0, size)
+		return newHasher(Iv, 0, size)
 	}
 	var keyWords [8]uint32
 	for i := range keyWords {
@@ -187,13 +187,13 @@ func Sum256(b []byte) (out [32]byte) {
 
 // Sum512 returns the unkeyed BLAKE3 hash of b, truncated to 512 bits.
 func Sum512(b []byte) (out [64]byte) {
-	var n node
+	var n Node
 	if len(b) <= blockSize {
 		hashBlock(&out, b)
 		return
-	} else if len(b) <= chunkSize {
-		n = compressChunk(b, &iv, 0, 0)
-		n.flags |= flagRoot
+	} else if len(b) <= ChunkSize {
+		n = CompressChunk(b, &Iv, 0, 0)
+		n.flags |= FlagRoot
 	} else {
 		h := *defaultHasher
 		h.Write(b)
@@ -217,7 +217,7 @@ func Sum512(b []byte) (out [64]byte) {
 func DeriveKey(subKey []byte, ctx string, srcKey []byte) {
 	// construct the derivation Hasher
 	const derivationIVLen = 32
-	h := newHasher(iv, flagDeriveKeyContext, 32)
+	h := newHasher(Iv, flagDeriveKeyContext, 32)
 	h.Write([]byte(ctx))
 	derivationIV := h.Sum(make([]byte, 0, derivationIVLen))
 	var ivWords [8]uint32
@@ -233,7 +233,7 @@ func DeriveKey(subKey []byte, ctx string, srcKey []byte) {
 // An OutputReader produces an seekable stream of 2^64 - 1 pseudorandom output
 // bytes.
 type OutputReader struct {
-	n   node
+	n   Node
 	buf [maxSIMD * blockSize]byte
 	off uint64
 }
