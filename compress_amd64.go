@@ -135,7 +135,7 @@ func wordsToBytes(words [16]uint32, block *[64]byte) {
 	*block = *(*[64]byte)(unsafe.Pointer(&words))
 }
 
-func bytesToCV(b []byte) [8]uint32 {
+func BytesToCV(b []byte) [8]uint32 {
 	return *(*[8]uint32)(unsafe.Pointer(&b[0]))
 }
 
